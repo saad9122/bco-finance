@@ -12,106 +12,123 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
+const EXPORT_HEADERS = [
+  'Sr No',
+  'Member Name',
+  'Amount In Hand',
+  'Monthly Fee',
+  'Loan Returned',
+  'Balance of Credit',
+  'Loan Issued',
+] as const
+
+type ExportRow = {
+  memberName: string
+  memberCode: string
+  year: number
+  month: number
+  amountInHand: string | null
+  monthlyFee: string | null
+  previousBalanceOfCredit: string
+  loanReturned: string | null
+  loanIssued: string | null
+  balanceOfCredit: string | null
+  remarks: string | null
+}
+
 interface Props {
   year: number
   month: number
 }
 
-function toCsv(
-  rows: Array<{
-    memberName: string
-    memberCode: string
-    year: number
-    month: number
-    amountInHand: string | null
-    monthlyFee: string | null
-    previousBalanceOfCredit: string
-    loanReturned: string | null
-    loanIssued: string | null
-    balanceOfCredit: string | null
-    remarks: string | null
-  }>,
+function parseWhole(value: string | null | undefined): number {
+  return Math.round(parseFloat(value || '0') || 0)
+}
+
+function sumTotals(rows: ExportRow[]) {
+  return rows.reduce(
+    (acc, r) => {
+      acc.amountInHand += parseWhole(r.amountInHand)
+      acc.monthlyFee += parseWhole(r.monthlyFee)
+      acc.loanReturned += parseWhole(r.loanReturned)
+      acc.loanIssued += parseWhole(r.loanIssued)
+      acc.balanceOfCredit += parseWhole(r.balanceOfCredit)
+      return acc
+    },
+    {
+      amountInHand: 0,
+      monthlyFee: 0,
+      loanReturned: 0,
+      loanIssued: 0,
+      balanceOfCredit: 0,
+    }
+  )
+}
+
+function getHeading(
   filter: 'month' | 'year' | 'all',
   year: number,
   month: number
 ) {
-  let heading = ''
   if (filter === 'month') {
-    heading = `Statement Account For the Month Of ${MONTHS[month - 1]} ${year}`
-  } else if (filter === 'year') {
-    heading = `Statement Account For the Year ${year}`
-  } else {
-    heading = `Statement Account - All Historical Data`
+    return `Statement Account For the Month Of ${MONTHS[month - 1]} ${year}`
   }
+  if (filter === 'year') {
+    return `Statement Account For the Year ${year}`
+  }
+  return `Statement Account - All Historical Data`
+}
 
-  const dateStr = new Date().toLocaleDateString('en-US', {
+function getExportDate() {
+  return new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   })
+}
 
+function toCsv(
+  rows: ExportRow[],
+  filter: 'month' | 'year' | 'all',
+  year: number,
+  month: number
+) {
   const titleBlock = [
-    `"${heading}"`,
-    `"Exported Date: ${dateStr}"`,
-    '', // Empty spacer row
+    `"${getHeading(filter, year, month)}"`,
+    `"Exported Date: ${getExportDate()}"`,
+    '',
   ]
 
-  const header =
-    'Member Name,Amount In Hand,Monthly Fee,Loan Returned,Loan Issued,Balance of Credit,Remarks'
+  const header = EXPORT_HEADERS.join(',')
 
-  const lines = rows.map((r) =>
+  const lines = rows.map((r, idx) =>
     [
+      idx + 1,
       `"${r.memberName.replace(/"/g, '""')}"`,
       formatAmountCsv(r.amountInHand),
       formatAmountCsv(r.monthlyFee),
       formatAmountCsv(r.loanReturned),
-      formatAmountCsv(r.loanIssued),
       formatAmountCsv(r.balanceOfCredit),
-      `"${(r.remarks ?? '').replace(/"/g, '""')}"`,
+      formatAmountCsv(r.loanIssued),
     ].join(',')
   )
 
-  let totalAmountInHand = 0
-  let totalMonthlyFee = 0
-  let totalLoanReturned = 0
-  let totalLoanIssued = 0
-  let totalBalanceOfCredit = 0
-
-  rows.forEach((r) => {
-    totalAmountInHand += Math.round(parseFloat(r.amountInHand || '0') || 0)
-    totalMonthlyFee += Math.round(parseFloat(r.monthlyFee || '0') || 0)
-    totalLoanReturned += Math.round(parseFloat(r.loanReturned || '0') || 0)
-    totalLoanIssued += Math.round(parseFloat(r.loanIssued || '0') || 0)
-    totalBalanceOfCredit += Math.round(parseFloat(r.balanceOfCredit || '0') || 0)
-  })
-
+  const totals = sumTotals(rows)
   const totalsLine = [
-    `"Total"`,
-    totalAmountInHand,
-    totalMonthlyFee,
-    totalLoanReturned,
-    totalLoanIssued,
-    totalBalanceOfCredit,
     `""`,
+    `"Total"`,
+    totals.amountInHand,
+    totals.monthlyFee,
+    totals.loanReturned,
+    totals.balanceOfCredit,
+    totals.loanIssued,
   ].join(',')
 
   return [...titleBlock, header, ...lines, '', totalsLine].join('\n')
 }
 
 async function exportToExcel(
-  rows: Array<{
-    memberName: string
-    memberCode: string
-    year: number
-    month: number
-    amountInHand: string | null
-    monthlyFee: string | null
-    previousBalanceOfCredit: string
-    loanReturned: string | null
-    loanIssued: string | null
-    balanceOfCredit: string | null
-    remarks: string | null
-  }>,
+  rows: ExportRow[],
   filter: 'month' | 'year' | 'all',
   year: number,
   month: number
@@ -122,147 +139,104 @@ async function exportToExcel(
 
   worksheet.views = [{ showGridLines: true }]
 
-  let heading = ''
-  if (filter === 'month') {
-    heading = `Statement Account For the Month Of ${MONTHS[month - 1]} ${year}`
-  } else if (filter === 'year') {
-    heading = `Statement Account For the Year ${year}`
-  } else {
-    heading = `Statement Account - All Historical Data`
-  }
-
-  const dateStr = new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-
-  // Title Row
-  const titleRow = worksheet.addRow([heading])
+  const titleRow = worksheet.addRow([getHeading(filter, year, month)])
   titleRow.font = { name: 'Calibri', size: 18, bold: true, color: { argb: 'FF0F172A' } }
   worksheet.mergeCells('A1:G1')
   titleRow.height = 32
 
-  // Subtitle/Date Row
-  const dateRow = worksheet.addRow([`Exported Date: ${dateStr}`])
+  const dateRow = worksheet.addRow([`Exported Date: ${getExportDate()}`])
   dateRow.font = { name: 'Calibri', size: 11, italic: true, color: { argb: 'FF64748B' } }
   worksheet.mergeCells('A2:G2')
   dateRow.height = 22
 
-  // Spacer
   worksheet.addRow([])
 
-  // Header Row
-  const headers = [
-    'Member Name',
-    'Amount In Hand',
-    'Monthly Fee',
-    'Loan Returned',
-    'Loan Issued',
-    'Balance of Credit',
-    'Remarks',
-  ]
-  const headerRow = worksheet.addRow(headers)
+  const headerRow = worksheet.addRow([...EXPORT_HEADERS])
   headerRow.height = 28
 
-  // Style Header Row
-  headerRow.eachCell((cell) => {
+  headerRow.eachCell((cell, colNumber) => {
     cell.font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FFFFFFFF' } }
     cell.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FF1E3A8A' }, // Professional Blue 900
+      fgColor: { argb: 'FF1E3A8A' },
     }
     cell.border = {
       top: { style: 'thin', color: { argb: 'FF1E3A8A' } },
       bottom: { style: 'medium', color: { argb: 'FF1E3A8A' } },
       left: { style: 'thin', color: { argb: 'FF3B82F6' } },
-      right: { style: 'thin', color: { argb: 'FF3B82F6' } }
+      right: { style: 'thin', color: { argb: 'FF3B82F6' } },
     }
-    cell.alignment = { vertical: 'middle', horizontal: cell.address.match(/^A\d+$/) ? 'left' : 'right' }
-    if (cell.address.match(/^G\d+$/)) {
-      cell.alignment.horizontal = 'left'
+    cell.alignment = {
+      vertical: 'middle',
+      horizontal: colNumber <= 2 ? (colNumber === 1 ? 'center' : 'left') : 'right',
     }
   })
 
-  // Data Rows
   rows.forEach((r, idx) => {
     const isEven = idx % 2 === 1
-    const amountInHandNum = Math.round(parseFloat(r.amountInHand || '0') || 0)
-    const monthlyFeeNum = Math.round(parseFloat(r.monthlyFee || '0') || 0)
-    const loanRetNum = Math.round(parseFloat(r.loanReturned || '0') || 0)
-    const loanIssNum = Math.round(parseFloat(r.loanIssued || '0') || 0)
-    const balCreditNum = Math.round(parseFloat(r.balanceOfCredit || '0') || 0)
+    const amountInHandNum = parseWhole(r.amountInHand)
+    const monthlyFeeNum = parseWhole(r.monthlyFee)
+    const loanRetNum = parseWhole(r.loanReturned)
+    const balCreditNum = parseWhole(r.balanceOfCredit)
+    const loanIssNum = parseWhole(r.loanIssued)
 
-    const rowData = [
+    const row = worksheet.addRow([
+      idx + 1,
       r.memberName,
       amountInHandNum,
       monthlyFeeNum,
       loanRetNum,
-      loanIssNum,
       balCreditNum,
-      r.remarks || '',
-    ]
-
-    const row = worksheet.addRow(rowData)
+      loanIssNum,
+    ])
     row.height = 22
 
-    // Styling data cells
     row.eachCell((cell, colNumber) => {
-      cell.font = { name: 'Calibri', size: 11 }
+      const highlightLoanIssued = colNumber === 7 && loanIssNum > 1
+      cell.font = {
+        name: 'Calibri',
+        size: 11,
+        bold: highlightLoanIssued,
+        color: highlightLoanIssued ? { argb: 'FF15803D' } : { argb: 'FF0F172A' },
+      }
       cell.border = {
         bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
         right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-        left: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+        left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
       }
 
       if (isEven) {
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: 'FFF8FAFC' }, // Slate 50 Zebra striping
+          fgColor: { argb: 'FFF8FAFC' },
         }
       }
 
-      // Format Numbers
-      if (colNumber >= 2 && colNumber <= 6) {
+      if (colNumber === 1) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' }
+      } else if (colNumber === 2) {
+        cell.alignment = { vertical: 'middle', horizontal: 'left' }
+      } else {
         cell.numFmt = '#,##0'
         cell.alignment = { vertical: 'middle', horizontal: 'right' }
-      } else {
-        cell.alignment = { vertical: 'middle', horizontal: 'left' }
       }
     })
   })
 
-  // Spacer before Totals
   worksheet.addRow([])
 
-  // Totals Row
-  let totalAmountInHand = 0
-  let totalMonthlyFee = 0
-  let totalLoanReturned = 0
-  let totalLoanIssued = 0
-  let totalBalanceOfCredit = 0
-
-  rows.forEach((r) => {
-    totalAmountInHand += Math.round(parseFloat(r.amountInHand || '0') || 0)
-    totalMonthlyFee += Math.round(parseFloat(r.monthlyFee || '0') || 0)
-    totalLoanReturned += Math.round(parseFloat(r.loanReturned || '0') || 0)
-    totalLoanIssued += Math.round(parseFloat(r.loanIssued || '0') || 0)
-    totalBalanceOfCredit += Math.round(parseFloat(r.balanceOfCredit || '0') || 0)
-  })
-
-  const totalsData = [
-    'Total',
-    totalAmountInHand,
-    totalMonthlyFee,
-    totalLoanReturned,
-    totalLoanIssued,
-    totalBalanceOfCredit,
+  const totals = sumTotals(rows)
+  const totalRow = worksheet.addRow([
     '',
-  ]
-
-  const totalRow = worksheet.addRow(totalsData)
+    'Total',
+    totals.amountInHand,
+    totals.monthlyFee,
+    totals.loanReturned,
+    totals.balanceOfCredit,
+    totals.loanIssued,
+  ])
   totalRow.height = 26
 
   totalRow.eachCell((cell, colNumber) => {
@@ -270,25 +244,25 @@ async function exportToExcel(
     cell.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FFF1F5F9' }, // Slate 100
+      fgColor: { argb: 'FFF1F5F9' },
     }
-
     cell.border = {
       top: { style: 'medium', color: { argb: 'FF1E3A8A' } },
       bottom: { style: 'double', color: { argb: 'FF1E3A8A' } },
       left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-      right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+      right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
     }
 
-    if (colNumber >= 2 && colNumber <= 6) {
+    if (colNumber === 1) {
+      cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    } else if (colNumber === 2) {
+      cell.alignment = { vertical: 'middle', horizontal: 'left' }
+    } else {
       cell.numFmt = '#,##0'
       cell.alignment = { vertical: 'middle', horizontal: 'right' }
-    } else {
-      cell.alignment = { vertical: 'middle', horizontal: 'left' }
     }
   })
 
-  // Auto-fit Columns
   worksheet.columns.forEach((column) => {
     let maxLength = 0
     column.eachCell?.({ includeEmpty: true }, (cell) => {
@@ -300,10 +274,13 @@ async function exportToExcel(
     column.width = Math.max(maxLength + 4, 12)
   })
 
-  worksheet.getColumn(7).width = 25
+  worksheet.getColumn(1).width = 10
+  worksheet.getColumn(2).width = 28
 
   const buffer = await workbook.xlsx.writeBuffer()
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
   const url = URL.createObjectURL(blob)
   const filename =
     filter === 'month'
@@ -319,85 +296,33 @@ async function exportToExcel(
 }
 
 async function exportToPdf(
-  rows: Array<{
-    memberName: string
-    memberCode: string
-    year: number
-    month: number
-    amountInHand: string | null
-    monthlyFee: string | null
-    previousBalanceOfCredit: string
-    loanReturned: string | null
-    loanIssued: string | null
-    balanceOfCredit: string | null
-    remarks: string | null
-  }>,
+  rows: ExportRow[],
   filter: 'month' | 'year' | 'all',
   year: number,
   month: number
 ) {
   const { jsPDF } = await import('jspdf')
   const autoTable = (await import('jspdf-autotable')).default
-  
+
   const doc = new jsPDF('portrait', 'mm', 'a4')
-  
-  let heading = ''
-  if (filter === 'month') {
-    heading = `Statement Account For the Month Of ${MONTHS[month - 1]} ${year}`
-  } else if (filter === 'year') {
-    heading = `Statement Account For the Year ${year}`
-  } else {
-    heading = `Statement Account - All Historical Data`
-  }
 
-  const dateStr = new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-
-  // Title
   doc.setFontSize(16)
-  doc.setTextColor(15, 23, 42) // Slate 900
-  doc.text(heading, 14, 22)
-  
-  // Date
+  doc.setTextColor(15, 23, 42)
+  doc.text(getHeading(filter, year, month), 14, 22)
+
   doc.setFontSize(10)
-  doc.setTextColor(100, 116, 139) // Slate 500
-  doc.text(`Exported Date: ${dateStr}`, 14, 28)
+  doc.setTextColor(100, 116, 139)
+  doc.text(`Exported Date: ${getExportDate()}`, 14, 28)
 
-  // Columns & Data
-  const tableColumn = [
-    'Sr No',
-    'Member Name',
-    'Amount In Hand',
-    'Monthly Fee',
-    'Loan Returned',
-    'Loan Issued',
-    'Balance of Credit',
-    'Remarks',
-  ]
-
-  let totalAmountInHand = 0
-  let totalMonthlyFee = 0
-  let totalLoanReturned = 0
-  let totalLoanIssued = 0
-  let totalBalanceOfCredit = 0
-
-  const tableRows: any[][] = []
+  const totals = sumTotals(rows)
+  const tableRows: (string | number)[][] = []
 
   rows.forEach((r, idx) => {
-    const amountInHandNum = Math.round(parseFloat(r.amountInHand || '0') || 0)
-    const monthlyFeeNum = Math.round(parseFloat(r.monthlyFee || '0') || 0)
-    const loanRetNum = Math.round(parseFloat(r.loanReturned || '0') || 0)
-    const loanIssNum = Math.round(parseFloat(r.loanIssued || '0') || 0)
-    const balCreditNum = Math.round(parseFloat(r.balanceOfCredit || '0') || 0)
-
-    totalAmountInHand += amountInHandNum
-    totalMonthlyFee += monthlyFeeNum
-    totalLoanReturned += loanRetNum
-    totalLoanIssued += loanIssNum
-    totalBalanceOfCredit += balCreditNum
+    const amountInHandNum = parseWhole(r.amountInHand)
+    const monthlyFeeNum = parseWhole(r.monthlyFee)
+    const loanRetNum = parseWhole(r.loanReturned)
+    const balCreditNum = parseWhole(r.balanceOfCredit)
+    const loanIssNum = parseWhole(r.loanIssued)
 
     tableRows.push([
       idx + 1,
@@ -405,25 +330,23 @@ async function exportToPdf(
       amountInHandNum.toLocaleString(),
       monthlyFeeNum.toLocaleString(),
       loanRetNum.toLocaleString(),
-      loanIssNum.toLocaleString(),
       balCreditNum.toLocaleString(),
-      r.remarks || '',
+      loanIssNum.toLocaleString(),
     ])
   })
 
   tableRows.push([
     '',
     'Total',
-    totalAmountInHand.toLocaleString(),
-    totalMonthlyFee.toLocaleString(),
-    totalLoanReturned.toLocaleString(),
-    totalLoanIssued.toLocaleString(),
-    totalBalanceOfCredit.toLocaleString(),
-    '',
+    totals.amountInHand.toLocaleString(),
+    totals.monthlyFee.toLocaleString(),
+    totals.loanReturned.toLocaleString(),
+    totals.balanceOfCredit.toLocaleString(),
+    totals.loanIssued.toLocaleString(),
   ])
 
   autoTable(doc, {
-    head: [tableColumn],
+    head: [[...EXPORT_HEADERS]],
     body: tableRows,
     startY: 34,
     styles: {
@@ -432,28 +355,38 @@ async function exportToPdf(
       cellPadding: 3,
     },
     headStyles: {
-      fillColor: [30, 58, 138], // Blue 900
+      fillColor: [30, 58, 138],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
       halign: 'right',
     },
     bodyStyles: {
-      textColor: [51, 65, 85], // Slate 700
+      textColor: [51, 65, 85],
       halign: 'right',
     },
     columnStyles: {
-      0: { halign: 'center' }, // Sr No
-      1: { halign: 'left' }, // Member Name
-      7: { halign: 'left' }, // Remarks
+      0: { halign: 'center' },
+      1: { halign: 'left' },
     },
     alternateRowStyles: {
-      fillColor: [248, 250, 252], // Slate 50
+      fillColor: [248, 250, 252],
     },
-    didParseCell: function (data: any) {
-      if (data.row.index === tableRows.length - 1) { // Total Row
+    didParseCell: function (data) {
+      const isTotalRow = data.row.index === tableRows.length - 1
+      if (isTotalRow && data.section === 'body') {
         data.cell.styles.fontStyle = 'bold'
-        data.cell.styles.fillColor = [241, 245, 249] // Slate 100
-        data.cell.styles.textColor = [15, 23, 42] // Slate 900
+        data.cell.styles.fillColor = [241, 245, 249]
+        data.cell.styles.textColor = [15, 23, 42]
+        return
+      }
+
+      // Loan Issued column — green + bold when value > 1
+      if (data.section === 'body' && data.column.index === 6 && !isTotalRow) {
+        const loanIssued = parseWhole(rows[data.row.index]?.loanIssued)
+        if (loanIssued > 1) {
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.textColor = [21, 128, 61] // green-700
+        }
       }
     },
   })
@@ -464,7 +397,7 @@ async function exportToPdf(
       : filter === 'year'
         ? `records-${year}.pdf`
         : `records-all.pdf`
-        
+
   doc.save(filename)
 }
 
@@ -543,7 +476,6 @@ export function CsvExportDialog({ year, month }: Props) {
               Choose output format and range to download.
             </p>
 
-            {/* Format selector */}
             <div className="flex gap-1 p-1 bg-muted rounded-xl mb-4 border border-border/50">
               <button
                 type="button"
@@ -637,4 +569,3 @@ export function CsvExportDialog({ year, month }: Props) {
     </>
   )
 }
-
