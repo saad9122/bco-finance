@@ -432,20 +432,27 @@ export async function getAllRecordsForExport(
     })
     .from(monthlyRecords)
     .innerJoin(members, eq(monthlyRecords.memberId, members.id))
-    .where(eq(monthlyRecords.userId, userId))
+    .where(
+      and(eq(monthlyRecords.userId, userId), eq(members.isActive, true))
+    )
     .$dynamic()
 
   if (filter === 'month' && year && month) {
     query = query.where(
       and(
         eq(monthlyRecords.userId, userId),
+        eq(members.isActive, true),
         eq(monthlyRecords.year, year),
         eq(monthlyRecords.month, month)
       )
     )
   } else if (filter === 'year' && year) {
     query = query.where(
-      and(eq(monthlyRecords.userId, userId), eq(monthlyRecords.year, year))
+      and(
+        eq(monthlyRecords.userId, userId),
+        eq(members.isActive, true),
+        eq(monthlyRecords.year, year)
+      )
     )
   }
 
