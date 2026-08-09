@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type KeyboardEvent } from 'react'
 import {
   getMonthlyRecords,
   bulkUpsertMonthlyRecords,
@@ -9,7 +9,7 @@ import { computeRecord } from '@/lib/calculations'
 import { formatAmount, toWholeAmount } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Save, Users } from 'lucide-react'
+import { Loader2, Save, Users, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 
 type Row = Awaited<ReturnType<typeof getMonthlyRecords>>[number]
@@ -21,10 +21,14 @@ type Draft = {
   remarks: string
 }
 
+type DraftField = keyof Draft
+
 interface Props {
   year: number
   month: number
 }
+
+const DEFAULT_MONTHLY_FEE = '1000'
 
 function parseNonNegative(value: string, label: string): number | null {
   const n = parseFloat(value)
@@ -53,6 +57,25 @@ function numberInputClassName() {
   return 'h-8 text-right font-mono text-sm px-2 min-w-[88px]'
 }
 
+function isZeroAmount(value: string): boolean {
+  const trimmed = value.trim()
+  if (trimmed === '') return true
+  const n = parseFloat(trimmed)
+  return isNaN(n) || n === 0
+}
+
+function focusSiblingInput(field: DraftField, nextIndex: number) {
+  const candidates = document.querySelectorAll<HTMLInputElement>(
+    `[data-record-field="${field}"][data-record-index="${nextIndex}"]`
+  )
+  const target =
+    Array.from(candidates).find((el) => el.offsetParent !== null) ??
+    candidates[0]
+  if (!target) return
+  target.focus()
+  target.select()
+}
+
 export function RecordsTable({ year, month }: Props) {
   const [rows, setRows] = useState<Row[]>([])
   const [drafts, setDrafts] = useState<Map<number, Draft>>(new Map())
@@ -74,7 +97,7 @@ export function RecordsTable({ year, month }: Props) {
     load()
   }, [load])
 
-  function updateDraft(memberId: number, field: keyof Draft, value: string) {
+  function updateDraft(memberId: number, field: DraftField, value: string) {
     setDrafts((prev) => {
       const next = new Map(prev)
       const current = next.get(memberId)
@@ -82,6 +105,42 @@ export function RecordsTable({ year, month }: Props) {
       next.set(memberId, { ...current, [field]: value })
       return next
     })
+  }
+
+  function handleInputKeyDown(
+    e: KeyboardEvent<HTMLInputElement>,
+    field: DraftField,
+    rowIndex: number
+  ) {
+    if (!(e.ctrlKey || e.metaKey)) return
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+
+    e.preventDefault()
+    const nextIndex = e.key === 'ArrowDown' ? rowIndex + 1 : rowIndex - 1
+    if (nextIndex < 0 || nextIndex >= rows.length) return
+    focusSiblingInput(field, nextIndex)
+  }
+
+  function fillDefaultMonthlyFees() {
+    const next = new Map(drafts)
+    let filled = 0
+
+    for (const row of rows) {
+      const draft = next.get(row.member.id)
+      if (!draft || !isZeroAmount(draft.monthlyFee)) continue
+      next.set(row.member.id, { ...draft, monthlyFee: DEFAULT_MONTHLY_FEE })
+      filled++
+    }
+
+    if (filled === 0) {
+      toast.info('No monthly fees with value 0 to update')
+      return
+    }
+
+    setDrafts(next)
+    toast.success(
+      `Set ${filled} monthly fee(s) to ${DEFAULT_MONTHLY_FEE}. Click Update All Records to save.`
+    )
   }
 
   function getPreview(row: Row, draft: Draft) {
@@ -167,6 +226,10 @@ export function RecordsTable({ year, month }: Props) {
   const totalAmountInHand = previews.reduce((s, p) => s + p.amountInHand, 0)
   const totalMonthlyFees = previews.reduce((s, p) => s + p.monthlyFee, 0)
   const totalBalanceOfCredit = previews.reduce((s, p) => s + p.balanceOfCredit, 0)
+  const zeroFeeCount = rows.reduce((count, row) => {
+    const draft = drafts.get(row.member.id)
+    return draft && isZeroAmount(draft.monthlyFee) ? count + 1 : count
+  }, 0)
 
   return (
     <div className="space-y-4">
@@ -197,28 +260,42 @@ export function RecordsTable({ year, month }: Props) {
             </p>
           </div>
         </div>
-        <Button
-          onClick={handleSaveAll}
-          disabled={saving}
-          className="h-11 gap-2 font-semibold shrink-0"
-        >
-          {saving ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4" />
-              Update All Records
-            </>
-          )}
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={fillDefaultMonthlyFees}
+            disabled={saving || zeroFeeCount === 0}
+            className="h-11 gap-2 font-semibold"
+          >
+            <Wallet className="w-4 h-4" />
+            Update Default Value
+          </Button>
+          <Button
+            onClick={handleSaveAll}
+            disabled={saving}
+            className="h-11 gap-2 font-semibold"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                Update All Records
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       <p className="text-xs text-muted-foreground">
         Edit monthly fee, loans, and remarks for each member, then click Update
-        All Records once. Calculated fields update as you type.
+        All Records once. Use Ctrl+↓ / Ctrl+↑ to move between the same field on
+        the next or previous row. &ldquo;Update Default Value&rdquo; fills 1000
+        only where monthly fee is 0 (not saved until you update all).
       </p>
 
       <div className="flex flex-col gap-3 md:hidden">
@@ -260,9 +337,12 @@ export function RecordsTable({ year, month }: Props) {
                     step="1"
                     min="0"
                     value={draft.monthlyFee}
+                    data-record-field="monthlyFee"
+                    data-record-index={i}
                     onChange={(e) =>
                       updateDraft(row.member.id, 'monthlyFee', e.target.value)
                     }
+                    onKeyDown={(e) => handleInputKeyDown(e, 'monthlyFee', i)}
                     className="h-9 mt-1"
                   />
                 </div>
@@ -273,9 +353,12 @@ export function RecordsTable({ year, month }: Props) {
                     step="1"
                     min="0"
                     value={draft.loanReturned}
+                    data-record-field="loanReturned"
+                    data-record-index={i}
                     onChange={(e) =>
                       updateDraft(row.member.id, 'loanReturned', e.target.value)
                     }
+                    onKeyDown={(e) => handleInputKeyDown(e, 'loanReturned', i)}
                     className="h-9 mt-1"
                   />
                 </div>
@@ -286,9 +369,12 @@ export function RecordsTable({ year, month }: Props) {
                     step="1"
                     min="0"
                     value={draft.loanIssued}
+                    data-record-field="loanIssued"
+                    data-record-index={i}
                     onChange={(e) =>
                       updateDraft(row.member.id, 'loanIssued', e.target.value)
                     }
+                    onKeyDown={(e) => handleInputKeyDown(e, 'loanIssued', i)}
                     className="h-9 mt-1"
                   />
                 </div>
@@ -296,9 +382,12 @@ export function RecordsTable({ year, month }: Props) {
                   <label className="text-xs text-muted-foreground">Remarks</label>
                   <Input
                     value={draft.remarks}
+                    data-record-field="remarks"
+                    data-record-index={i}
                     onChange={(e) =>
                       updateDraft(row.member.id, 'remarks', e.target.value)
                     }
+                    onKeyDown={(e) => handleInputKeyDown(e, 'remarks', i)}
                     className="h-9 mt-1"
                     placeholder="Optional"
                   />
@@ -366,9 +455,12 @@ export function RecordsTable({ year, month }: Props) {
                         step="1"
                         min="0"
                         value={draft.monthlyFee}
+                        data-record-field="monthlyFee"
+                        data-record-index={i}
                         onChange={(e) =>
                           updateDraft(row.member.id, 'monthlyFee', e.target.value)
                         }
+                        onKeyDown={(e) => handleInputKeyDown(e, 'monthlyFee', i)}
                         className={numberInputClassName()}
                       />
                     </td>
@@ -381,9 +473,12 @@ export function RecordsTable({ year, month }: Props) {
                         step="1"
                         min="0"
                         value={draft.loanReturned}
+                        data-record-field="loanReturned"
+                        data-record-index={i}
                         onChange={(e) =>
                           updateDraft(row.member.id, 'loanReturned', e.target.value)
                         }
+                        onKeyDown={(e) => handleInputKeyDown(e, 'loanReturned', i)}
                         className={numberInputClassName()}
                       />
                     </td>
@@ -393,9 +488,12 @@ export function RecordsTable({ year, month }: Props) {
                         step="1"
                         min="0"
                         value={draft.loanIssued}
+                        data-record-field="loanIssued"
+                        data-record-index={i}
                         onChange={(e) =>
                           updateDraft(row.member.id, 'loanIssued', e.target.value)
                         }
+                        onKeyDown={(e) => handleInputKeyDown(e, 'loanIssued', i)}
                         className={numberInputClassName()}
                       />
                     </td>
@@ -405,9 +503,12 @@ export function RecordsTable({ year, month }: Props) {
                     <td className="py-2 px-3">
                       <Input
                         value={draft.remarks}
+                        data-record-field="remarks"
+                        data-record-index={i}
                         onChange={(e) =>
                           updateDraft(row.member.id, 'remarks', e.target.value)
                         }
+                        onKeyDown={(e) => handleInputKeyDown(e, 'remarks', i)}
                         placeholder="Optional"
                         className="h-8 text-sm min-w-[120px]"
                       />
