@@ -32,9 +32,9 @@ export const PDF_STYLES = {
     startY: 34,
     styles: {
       font: 'helvetica' as const,
-      fontSize: 12,
+      fontSize: 13,
       /** No vertical padding — keeps rows compact so the table fits one page */
-      cellPadding: { top: 3, right: 2, bottom: 3, left: 2 },
+      cellPadding: { top: 2, right: 2, bottom: 2, left: 2 },
       minCellHeight: 0,
       valign: 'middle' as const,
     },
@@ -42,7 +42,7 @@ export const PDF_STYLES = {
       fillColor: [...C.primary] as [number, number, number],
       textColor: [...C.textOnPrimary] as [number, number, number],
       fontStyle: 'bold' as const,
-      fontSize: 10,
+      fontSize: 12,
       halign: 'right' as const,
       cellPadding: { top: 1, right: 2, bottom: 1, left: 2 },
     },
@@ -53,7 +53,12 @@ export const PDF_STYLES = {
     },
     columnStyles: {
       0: { halign: 'center' as const },
-      1: { halign: 'left' as const },
+      /** Member Name — slightly wider so names aren't cramped */
+      1: {
+        halign: 'left' as const,
+        cellWidth: 50,
+        cellPadding: { top: 2, right: 3, bottom: 2, left: 3 },
+      },
     },
     alternateRowStyles: {
       fillColor: [...C.rowAlternate] as [number, number, number],
