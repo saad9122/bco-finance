@@ -5,7 +5,6 @@ import {
   LOAN_ISSUED_HIGHLIGHT_THRESHOLD,
   type ExportFilter,
   type ExportRow,
-  getExportDate,
   getExportFilename,
   getHeading,
   parseWhole,
@@ -26,10 +25,6 @@ export async function exportToPdf(
   doc.setFontSize(S.title.fontSize)
   doc.setTextColor(...S.title.textColor)
   doc.text(getHeading(filter, year, month), S.title.x, S.title.y)
-
-  doc.setFontSize(S.date.fontSize)
-  doc.setTextColor(...S.date.textColor)
-  doc.text(`Exported Date: ${getExportDate()}`, S.date.x, S.date.y)
 
   const totals = sumTotals(rows)
   const tableRows: (string | number)[][] = []
@@ -66,6 +61,7 @@ export async function exportToPdf(
     head: [[...EXPORT_HEADERS]],
     body: tableRows,
     startY: S.table.startY,
+    margin: { ...S.margin },
     styles: { ...S.table.styles },
     headStyles: { ...S.table.headStyles },
     bodyStyles: { ...S.table.bodyStyles },
