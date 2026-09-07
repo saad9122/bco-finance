@@ -11,7 +11,7 @@ export const PDF_STYLES = {
   page: {
     orientation: 'portrait' as const,
     unit: 'mm' as const,
-    format: 'a3' as const,
+    format: 'a4' as const,
   },
 
   /** Tight page margins so the table uses as much vertical space as possible */
@@ -35,7 +35,7 @@ export const PDF_STYLES = {
     styles: {
       font: 'helvetica' as const,
       fontSize: 13,
-      cellPadding: { top: 3, right: 2, bottom: 3, left: 2 },
+      cellPadding: { top: 2, right: 2, bottom: 2, left: 2 },
       minCellHeight: 0,
       valign: 'middle' as const,
     },
